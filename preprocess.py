@@ -3,14 +3,15 @@ import numpy as np
 import pandas as pd
 import tqdm
 import os
+import config
 from models import Node, Rec
 
-checkin_file = "../dataset/loc-gowalla_totalCheckins.txt"
+checkin_file = config.dataset
 df = pd.read_csv(checkin_file, sep='\t', header=None)
 df.columns = ["user", "time", "latitude", "longitude", "poi"]
-print "total visit :", len(df),
+print ("total visit :", len(df))
 df = df.drop_duplicates(subset=['poi'])
-print "/ total poi :", len(df)
+print ("/ total poi :", len(df))
 poi2pos = df.loc[:, ['latitude', 'longitude', 'poi']].set_index('poi').T.to_dict('list')
 
 proc_n = 20
@@ -27,7 +28,7 @@ np.save("./npy/id2poi.npy", id2poi)
 # build a tree of area
 tree = Node(df['latitude'].min(), df['latitude'].max(),df['longitude'].max(), df['longitude'].min(), 0)
 tree.build()
-print "total node of tree :", Node.count
+print ("total node of tree :", Node.count)
 theta = Node.theta
 
 def main(id2poi_batch, proc_i):
@@ -82,9 +83,11 @@ def main(id2poi_batch, proc_i):
 if __name__ == '__main__':
     procs = []
     batch_size = len(id2poi)/proc_n
-    for i in xrange(proc_n+1):
-        print "process #%02d running..."%(i+1)
-        proc = Process(target=main, args=(id2poi[i*batch_size+1:(i+1)*batch_size+1], i+1))
+    for i in range(proc_n+1):
+        print ("process #%02d running..."%(i+1))
+        batch_start = int(i*batch_size+1)
+        batch_end = int((i+1)*batch_size+1)
+        proc = Process(target=main, args=(id2poi[batch_start:batch_end], i+1))
         procs.append(proc)
         proc.start()
 

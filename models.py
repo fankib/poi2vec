@@ -28,21 +28,22 @@ class POI2VEC(nn.Module):
         self.route_weight.weight.data.normal_(config.weight_m, config.weight_v)
         self.sigmoid = nn.Sigmoid()
 
-    def forward(self, user, context, target):
-        target = map(int, target)
+    def forward(self, user, context, target, device):
+        #target = map(int, target)
+        target = [int(t) for t in target]
         route = Variable(torch.from_numpy(self.id2route[target]))\
-                        .contiguous().view(-1, config.route_count*config.route_depth).type(config.ltype)
+                        .contiguous().view(-1, config.route_count*config.route_depth).long().to(device)
                         # batch x (route_coutn(4) x route_dept(22))
         lr = Variable(torch.from_numpy(self.id2lr[target]))\
-                        .view(-1, config.route_count*(config.route_depth)).type(config.ftype)
+                        .view(-1, config.route_count*(config.route_depth)).float().to(device)
                         # batch x (route_count(4) x route_depth(21))
         prob = Variable(torch.from_numpy(self.id2prob[target]))\
-                        .view(-1, config.route_count).type(config.ftype) # batch x route_count(4)
+                        .view(-1, config.route_count).float().to(device) # batch x route_count(4)
 
         context = self.poi_weight(context) # batch x context_len(32) x feat_dim(200)
         route = self.route_weight(route) # batch x (route_count(4) x route_depth(22)) x feat_dim(200)
         user = self.user_weight(user) # batch x feat_dim(200)
-        target = Variable(torch.from_numpy(np.asarray(target)).type(config.ltype))
+        target = Variable(torch.from_numpy(np.asarray(target)).long()).to(device)
         target = self.poi_weight(target)
 
         phi_context = torch.sum(context, dim=1, keepdim=True).permute(0,2,1) # batch x feat_dim x 1
@@ -53,20 +54,23 @@ class POI2VEC(nn.Module):
                         .view(-1, config.route_count, config.route_depth)
 
         pr_path = 1
-        for i in xrange(config.route_depth):
+        for i in range(config.route_depth):
             pr_path = torch.mul(psi_context[:,:,i], pr_path)
         pr_path = torch.sum(torch.mul(pr_path, prob), 1)
         
         pr_user = torch.mm(user, self.poi_weight.weight.t())
         pr_user = torch.sum(torch.exp(pr_user), 1)
         pr_user = torch.div(torch.exp(torch.sum(torch.mul(target, user), 1)), pr_user)
-        pr_ult = 1.0-torch.sum(torch.mul(pr_user, pr_path))
+        #pr_ult = 1.0-torch.sum(torch.mul(pr_user, pr_path))
+        
+        pr_ult = pr_path
 
         return pr_ult
         
 class Rec:
     # Rectangle for calculate overlaped area
-    def __init__(self, (top, down, left, right)):
+    def __init__(self, rectangle):
+        top, down, left, right = rectangle
         self.top = top
         self.down = down
         self.left = left
@@ -117,7 +121,8 @@ class Node:
             else:
                 Node.leaves.append(self)
 
-    def find_route(self, (latitude, longitude)):
+    def find_route(self, coords):
+        latitude, longitude = coords
         if self.left == None:
             prev_route = [self.count]
             prev_lr = []
